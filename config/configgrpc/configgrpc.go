@@ -206,6 +206,9 @@ type ServerConfig struct {
 	// Middlewares for the gRPC server.
 	Middlewares []configmiddleware.Config `mapstructure:"middlewares,omitempty"`
 
+	// Connection Timeout to close opened connection
+	ConnectionTimeout time.Duration `mapstructure:"connection_timeout,omitempty"`
+
 	// prevent unkeyed literal initialization
 	_ struct{}
 }
@@ -464,6 +467,11 @@ func (sc *ServerConfig) getGrpcServerOptions(
 			return nil, err
 		}
 		opts = append(opts, grpc.Creds(credentials.NewTLS(tlsCfg)))
+	}
+
+	// Add ConnectionTimeout
+	if sc.ConnectionTimeout > 0 {
+		opts = append(opts, grpc.ConnectionTimeout(sc.ConnectionTimeout))
 	}
 
 	if sc.MaxRecvMsgSizeMiB > 0 && sc.MaxRecvMsgSizeMiB*1024*1024 > 0 {
