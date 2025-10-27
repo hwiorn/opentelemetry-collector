@@ -162,6 +162,20 @@ type LogsConfigV030 struct {
 	// Processors allow configuration of log record processors to emit logs to
 	// any number of supported backends.
 	Processors []config.LogRecordProcessor `mapstructure:"processors,omitempty"`
+
+	// Rotation configures log file rotation settings.
+	// When specified, log files in OutputPaths will be automatically rotated
+	// based on size limits.
+	// Example:
+	//
+	// 		rotation:
+	//	   		max_size_mb: 100
+	//	   		max_backups: 3
+	//	   		max_age_days: 28
+	//	   		compress: true
+	//
+	// By default, rotation is disabled.
+	Rotation *LogsRotationConfig `mapstructure:"rotation,omitempty"`
 }
 
 // LogsSamplingConfig sets a sampling strategy for the logger. Sampling caps the
@@ -177,6 +191,27 @@ type LogsSamplingConfig struct {
 	// Thereafter represents the sampling rate, every Nth message will be sampled after Initial messages are logged during each Tick.
 	// If Thereafter is zero, the logger will drop all the messages after the Initial each Tick.
 	Thereafter int `mapstructure:"thereafter"`
+}
+
+// LogsRotationConfig configures log file rotation settings.
+// Log files will be automatically rotated when they reach the specified size.
+type LogsRotationConfig struct {
+	// MaxSizeMB is the maximum size in megabytes of the log file before it gets rotated.
+	// (default = 100)
+	MaxSizeMB int `mapstructure:"max_size_mb"`
+
+	// MaxBackups is the maximum number of old log files to retain.
+	// The default is to retain all old log files (though MaxAgeDays may still cause them to get deleted.)
+	MaxBackups int `mapstructure:"max_backups,omitempty"`
+
+	// MaxAgeDays is the maximum number of days to retain old log files based on the timestamp encoded in their filename.
+	// Note that a day is defined as 24 hours and may not exactly correspond to calendar days due to daylight
+	// savings, leap seconds, etc. The default is not to remove old log files based on age.
+	MaxAgeDays int `mapstructure:"max_age_days,omitempty"`
+
+	// Compress determines if the rotated log files should be compressed using gzip.
+	// (default = false)
+	Compress bool `mapstructure:"compress,omitempty"`
 }
 
 func (c *LogsConfigV030) Unmarshal(conf *confmap.Conf) error {

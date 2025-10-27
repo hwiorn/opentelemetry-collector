@@ -5,11 +5,13 @@ package otelconftelemetry // import "go.opentelemetry.io/collector/service/telem
 
 import (
 	"context"
+	"strings"
 
 	otelconf "go.opentelemetry.io/contrib/otelconf/v0.3.0"
 	"go.opentelemetry.io/otel/attribute"
 	"go.uber.org/zap"
 	"go.uber.org/zap/zapcore"
+	"gopkg.in/natefinch/lumberjack.v2"
 
 	"go.opentelemetry.io/collector/component"
 	"go.opentelemetry.io/collector/internal/telemetry/componentattribute"
@@ -28,13 +30,33 @@ func createLogger(
 	// Copied from NewProductionConfig.
 	ec := zap.NewProductionEncoderConfig()
 	ec.EncodeTime = zapcore.ISO8601TimeEncoder
+
+	// Separate output paths if rotation is enabled
+	outputPaths := cfg.Logs.OutputPaths
+	errorOutputPaths := cfg.Logs.ErrorOutputPaths
+	var filePaths, errorFilePaths []string
+
+	if cfg.Logs.Rotation != nil {
+		// Separate console and file paths for rotation
+		outputPaths, filePaths = separateOutputPaths(cfg.Logs.OutputPaths)
+		errorOutputPaths, errorFilePaths = separateOutputPaths(cfg.Logs.ErrorOutputPaths)
+
+		// If no console paths remain, add stderr as default
+		if len(outputPaths) == 0 {
+			outputPaths = []string{"stderr"}
+		}
+		if len(errorOutputPaths) == 0 {
+			errorOutputPaths = []string{"stderr"}
+		}
+	}
+
 	zapCfg := &zap.Config{
 		Level:             zap.NewAtomicLevelAt(cfg.Logs.Level),
 		Development:       cfg.Logs.Development,
 		Encoding:          cfg.Logs.Encoding,
 		EncoderConfig:     ec,
-		OutputPaths:       cfg.Logs.OutputPaths,
-		ErrorOutputPaths:  cfg.Logs.ErrorOutputPaths,
+		OutputPaths:       outputPaths,
+		ErrorOutputPaths:  errorOutputPaths,
 		DisableCaller:     cfg.Logs.DisableCaller,
 		DisableStacktrace: cfg.Logs.DisableStacktrace,
 		InitialFields:     cfg.Logs.InitialFields,
@@ -48,6 +70,61 @@ func createLogger(
 	logger, err := zapCfg.Build(set.ZapOptions...)
 	if err != nil {
 		return nil, nil, err
+	}
+
+	// Add log rotation for file outputs if configured
+	if cfg.Logs.Rotation != nil && (len(filePaths) > 0 || len(errorFilePaths) > 0) {
+		logger = logger.WithOptions(zap.WrapCore(func(c zapcore.Core) zapcore.Core {
+			cores := []zapcore.Core{c} // Start with the existing core (console outputs)
+
+			// Create encoder based on configuration
+			var encoder zapcore.Encoder
+			if zapCfg.Encoding == "json" {
+				encoder = zapcore.NewJSONEncoder(zapCfg.EncoderConfig)
+			} else {
+				encoder = zapcore.NewConsoleEncoder(zapCfg.EncoderConfig)
+			}
+
+			// Add rotating file cores for regular output paths
+			for _, path := range filePaths {
+				w := zapcore.AddSync(&lumberjack.Logger{
+					Filename:   path,
+					MaxSize:    cfg.Logs.Rotation.MaxSizeMB,
+					MaxBackups: cfg.Logs.Rotation.MaxBackups,
+					MaxAge:     cfg.Logs.Rotation.MaxAgeDays,
+					Compress:   cfg.Logs.Rotation.Compress,
+				})
+
+				fileCore := zapcore.NewCore(
+					encoder,
+					w,
+					zapCfg.Level,
+				)
+				cores = append(cores, fileCore)
+			}
+
+			// Add rotating file cores for error output paths
+			// Error outputs typically only capture error-level logs
+			for _, path := range errorFilePaths {
+				w := zapcore.AddSync(&lumberjack.Logger{
+					Filename:   path,
+					MaxSize:    cfg.Logs.Rotation.MaxSizeMB,
+					MaxBackups: cfg.Logs.Rotation.MaxBackups,
+					MaxAge:     cfg.Logs.Rotation.MaxAgeDays,
+					Compress:   cfg.Logs.Rotation.Compress,
+				})
+
+				// Error output paths should only log errors
+				errorCore := zapcore.NewCore(
+					encoder,
+					w,
+					zapcore.ErrorLevel,
+				)
+				cores = append(cores, errorCore)
+			}
+
+			return zapcore.NewTee(cores...)
+		}))
 	}
 
 	// The attributes in res.Attributes(), which are generated in telemetry.go,
@@ -105,4 +182,20 @@ func createLogger(
 	}))
 
 	return logger, sdk.Shutdown, nil
+}
+
+// separateOutputPaths separates output paths into console outputs (stdout/stderr)
+// and file paths for rotation.
+func separateOutputPaths(paths []string) (consolePaths []string, filePaths []string) {
+	for _, path := range paths {
+		// Check if path is stdout, stderr, or starts with file:// scheme pointing to stdout/stderr
+		if path == "stdout" || path == "stderr" ||
+			strings.HasPrefix(path, "file://stdout") ||
+			strings.HasPrefix(path, "file://stderr") {
+			consolePaths = append(consolePaths, path)
+		} else {
+			filePaths = append(filePaths, path)
+		}
+	}
+	return consolePaths, filePaths
 }
