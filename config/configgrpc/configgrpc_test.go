@@ -103,6 +103,7 @@ func TestNewDefaultServerConfig(t *testing.T) {
 		NetAddr: confignet.AddrConfig{
 			Transport: confignet.TransportTypeTCP,
 		},
+		MaxRecvMsgSizeMiB: 128, // Default to 128MiB instead of gRPC's 4MiB default
 	}
 
 	result := NewDefaultServerConfig()
@@ -303,10 +304,11 @@ func TestDefaultGrpcServerSettings(t *testing.T) {
 		NetAddr: confignet.AddrConfig{
 			Endpoint: "0.0.0.0:1234",
 		},
+		MaxRecvMsgSizeMiB: 128, // Set explicitly for this test
 	}
 	opts, err := gss.getGrpcServerOptions(context.Background(), componenttest.NewNopHost(), componenttest.NewNopTelemetrySettings(), []ToServerOption{})
 	require.NoError(t, err)
-	assert.Len(t, opts, 3)
+	assert.Len(t, opts, 4) // Includes MaxRecvMsgSize option
 }
 
 func TestGrpcServerExtraOption(t *testing.T) {

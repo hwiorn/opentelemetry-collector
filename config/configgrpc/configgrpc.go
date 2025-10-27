@@ -221,8 +221,9 @@ func NewDefaultServerConfig() ServerConfig {
 	netAddr.Transport = confignet.TransportTypeTCP
 
 	return ServerConfig{
-		Keepalive: configoptional.Some(NewDefaultKeepaliveServerConfig()),
-		NetAddr:   netAddr,
+		Keepalive:         configoptional.Some(NewDefaultKeepaliveServerConfig()),
+		NetAddr:           netAddr,
+		MaxRecvMsgSizeMiB: 128, // Default to 128MiB instead of gRPC's 4MiB default
 	}
 }
 
@@ -474,7 +475,7 @@ func (sc *ServerConfig) getGrpcServerOptions(
 		opts = append(opts, grpc.ConnectionTimeout(sc.ConnectionTimeout))
 	}
 
-	if sc.MaxRecvMsgSizeMiB > 0 && sc.MaxRecvMsgSizeMiB*1024*1024 > 0 {
+	if sc.MaxRecvMsgSizeMiB > 0 {
 		opts = append(opts, grpc.MaxRecvMsgSize(sc.MaxRecvMsgSizeMiB*1024*1024))
 	}
 
