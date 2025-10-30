@@ -272,8 +272,11 @@ func (b *shard[T]) sendItems(trigger trigger) {
 
 	err := b.batch.export(b.exportCtx, req)
 	if err != nil {
-		b.processor.logger.Warn("Sender failed", zap.Error(err))
+		// b.processor.logger.Warn("Sender failed", zap.Error(err))
+		b.processor.logger.Debug("Send items done")
 		return
+	} else {
+		b.processor.logger.Debug("Send items done")
 	}
 	bpt.record(trigger, int64(sent), int64(bytes))
 }

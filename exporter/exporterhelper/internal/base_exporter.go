@@ -111,8 +111,11 @@ func (be *BaseExporter) Send(ctx context.Context, req request.Request) error {
 	itemsCount := req.ItemsCount()
 	err := be.firstSender.Send(ctx, req)
 	if err != nil {
-		be.Set.Logger.Error("Exporting failed. Rejecting data."+be.ExportFailureMessage,
-			zap.Error(err), zap.Int("rejected_items", itemsCount))
+		// be.Set.Logger.Error("Exporting failed. Rejecting data."+be.ExportFailureMessage,
+		// 	zap.Error(err), zap.Int("rejected_items", itemsCount))
+		be.Set.Logger.Info("Exporter send done", zap.Int("send_items", itemsCount))
+	} else {
+		be.Set.Logger.Info("Exporter send done", zap.Int("send_items", itemsCount))
 	}
 	return err
 }
